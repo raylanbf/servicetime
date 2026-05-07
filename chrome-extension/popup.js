@@ -18,8 +18,8 @@ const APPS_SCRIPT =
     var aba = planilha.getSheetByName(nomeAba);
     if (!aba) {
       aba = planilha.insertSheet(nomeAba);
-      aba.appendRow(["Usuário","Data","Tipo de Serviço","Início","Fim","Duração","Pausas"]);
-      aba.getRange(1,1,1,7).setFontWeight("bold");
+      aba.appendRow(["Usuário","Data","Tipo de Serviço","Início","Fim","Duração","Pausas","URL","Comentário"]);
+      aba.getRange(1,1,1,9).setFontWeight("bold");
     }
 
     var registros = dados.registros || [];
@@ -36,12 +36,14 @@ const APPS_SCRIPT =
         r.inicio       || "",
         r.fim          || "",
         r.tempo_total  || "",
-        pausas
+        pausas,
+        r.url          || "",
+        r.comentario   || ""
       ]);
     }
 
     if (linhas.length > 0)
-      aba.getRange(aba.getLastRow()+1, 1, linhas.length, 7).setValues(linhas);
+      aba.getRange(aba.getLastRow()+1, 1, linhas.length, 9).setValues(linhas);
 
     return ContentService
       .createTextOutput(JSON.stringify({ status: "ok", linhas: linhas.length }))
@@ -140,10 +142,47 @@ function syncMain() {
 
   $('timer').textContent = fmt(elapsedMs());
   updateCount();
+
+  const urlBox = $('url-box');
+  if (S.running && S.currentRecord && S.currentRecord.url) {
+    urlBox.style.display = 'flex';
+    $('url-display').textContent = S.currentRecord.url;
+  } else {
+    urlBox.style.display = 'none';
+  }
+}
+
+// ── Modal de comentário ───────────────────────────────────────────
+function askComment() {
+  return new Promise(resolve => {
+    const modal = $('modal-comment');
+    const input = $('comment-input');
+    input.value = '';
+    modal.style.display = 'flex';
+    setTimeout(() => input.focus(), 50);
+
+    function finish(value) {
+      modal.style.display = 'none';
+      document.removeEventListener('keydown', onKey);
+      resolve(value || null);
+    }
+
+    function onKey(e) {
+      if (e.key === 'Escape')                       finish(null);
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) finish(input.value.trim());
+    }
+
+    $('btn-comment-save').onclick = () => finish(input.value.trim());
+    $('btn-comment-skip').onclick = () => finish(null);
+    document.addEventListener('keydown', onKey);
+  });
 }
 
 // ── Ações do timer ────────────────────────────────────────────────────
 async function doStart() {
+  const tabs = await chrome.tabs.query({active: true, currentWindow: true});
+  const url = tabs[0].url;
+
   const record = {
     usuario:              S.usuario,
     tipo_servico:         $('combo-tipo').value,
@@ -154,6 +193,8 @@ async function doStart() {
     tempo_total:          null,
     tempo_total_segundos: 0,
     enviado:              false,
+    url:                  url,
+    comentario:           null,
   };
   await persist({ running: true, paused: false, startTs: Date.now(), accMs: 0, currentRecord: record });
   syncMain();
@@ -178,19 +219,23 @@ async function doPause() {
 }
 
 async function doStop() {
-  const ms  = elapsedMs();
-  const sec = Math.floor(ms / 1000);
-  const dur = [Math.floor(sec/3600), Math.floor((sec%3600)/60), sec%60]
+  const ms    = elapsedMs();
+  const sec   = Math.floor(ms / 1000);
+  const dur   = [Math.floor(sec/3600), Math.floor((sec%3600)/60), sec%60]
     .map((n, i) => i === 0 ? String(n) : String(n).padStart(2,'0')).join(':');
+  const fimHMS = nowHMS();
+
+  stopTick();
 
   const pausas = S.currentRecord.pausas.map((p, i, arr) =>
-    i === arr.length - 1 && !p.retorno ? { ...p, retorno: nowHMS() } : p);
+    i === arr.length - 1 && !p.retorno ? { ...p, retorno: fimHMS } : p);
 
-  const record    = { ...S.currentRecord, pausas, fim: nowHMS(), tempo_total: dur, tempo_total_segundos: sec };
+  const comentario = await askComment();
+
+  const record    = { ...S.currentRecord, pausas, fim: fimHMS, tempo_total: dur, tempo_total_segundos: sec, comentario };
   const registros = [...S.registros, record];
 
   await persist({ running: false, paused: false, startTs: null, accMs: 0, currentRecord: null, registros });
-  stopTick();
   syncMain();
 
   alert(`Serviço finalizado!\n\nTipo: ${record.tipo_servico}\nDuração: ${dur}`);
