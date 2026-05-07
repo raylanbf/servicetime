@@ -1,0 +1,111 @@
+================================================================
+  SERVICE TIMER — Como configurar o envio ao Google Sheets
+================================================================
+
+  Nenhum membro da equipe precisa de conta Google ou credenciais.
+  Apenas UMA pessoa (o responsável pela planilha) faz essa
+  configuração uma única vez. Depois é só colar a URL no programa.
+
+================================================================
+  PASSO 1 — Criar a planilha
+================================================================
+
+1. Acesse sheets.google.com e crie uma planilha nova
+2. Dê um nome (ex: "Registros Service Timer")
+
+================================================================
+  PASSO 2 — Criar o Web App (Apps Script)
+================================================================
+
+1. Na planilha, clique em "Extensões" > "Apps Script"
+2. Apague tudo que estiver no editor
+3. Cole o código abaixo e clique em Salvar (ícone de disquete):
+
+------------------------------------------------------------
+function doPost(e) {
+  try {
+    var dados = JSON.parse(e.postData.contents);
+    var planilha = SpreadsheetApp.getActiveSpreadsheet();
+    var nomeAba  = dados.usuario || "Sem nome";
+
+    var aba = planilha.getSheetByName(nomeAba);
+    if (!aba) {
+      aba = planilha.insertSheet(nomeAba);
+      aba.appendRow([
+        "Usuário", "Data", "Tipo de Serviço",
+        "Início", "Fim", "Duração", "Pausas"
+      ]);
+      aba.getRange(1, 1, 1, 7).setFontWeight("bold");
+    }
+
+    var registros = dados.registros || [];
+    var linhas = [];
+    for (var i = 0; i < registros.length; i++) {
+      var r = registros[i];
+      var pausas = (r.pausas || []).map(function(p) {
+        return (p.pausa || "") + " → " + (p.retorno || "-");
+      }).join("; ");
+      linhas.push([
+        r.usuario      || nomeAba,
+        r.data         || "",
+        r.tipo_servico || "",
+        r.inicio       || "",
+        r.fim          || "",
+        r.tempo_total  || "",
+        pausas
+      ]);
+    }
+
+    if (linhas.length > 0) {
+      aba.getRange(aba.getLastRow() + 1, 1, linhas.length, 7)
+         .setValues(linhas);
+    }
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: "ok", linhas: linhas.length }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: "erro", erro: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+------------------------------------------------------------
+
+================================================================
+  PASSO 3 — Publicar como Web App
+================================================================
+
+1. No Apps Script, clique em "Implantar" > "Nova implantação"
+2. Clique no ícone de engrenagem ao lado de "Tipo" e escolha
+   "App da Web"
+3. Preencha assim:
+   - Descrição: Service Timer
+   - Executar como: Eu mesmo (seu e-mail)
+   - Quem pode acessar: QUALQUER PESSOA
+4. Clique em "Implantar"
+5. Copie a URL que aparecer (começa com https://script.google.com/...)
+
+================================================================
+  PASSO 4 — Configurar no programa
+================================================================
+
+1. Abra o Service Timer
+2. Clique em "⚙ Config"
+3. Cole a URL no campo "URL do Web App"
+4. Clique em Salvar
+
+Pronto! Clique em "📊 Enviar ao Google Sheets" para enviar.
+Cada membro da equipe terá sua própria aba com seu nome.
+
+================================================================
+  IMPORTANTE
+================================================================
+
+- Se precisar atualizar o código do Apps Script, faça uma
+  NOVA implantação (não edite a existente) e distribua a nova URL.
+- A URL do Web App é a única coisa que cada usuário precisa.
+- Os registros já enviados são marcados e não são enviados
+  novamente (evita duplicatas).
+================================================================
