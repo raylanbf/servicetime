@@ -1,0 +1,5 @@
+config.json
+registros.json
+registros.docx
+__pycache__/
+*.pyc
