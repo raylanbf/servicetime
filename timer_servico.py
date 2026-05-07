@@ -37,7 +37,11 @@ DEFAULT_TIPOS = [
 ]
 
 # ── Caminhos de dados ────────────────────────────────────────────────
-DATA_DIR     = Path(__file__).parent
+import sys
+if getattr(sys, "frozen", False):
+    DATA_DIR = Path(sys.executable).parent   # rodando como .exe
+else:
+    DATA_DIR = Path(__file__).parent         # rodando como .py
 CONFIG_FILE  = DATA_DIR / "config.json"
 RECORDS_JSON = DATA_DIR / "registros.json"
 RECORDS_DOC  = DATA_DIR / "registros.docx"
