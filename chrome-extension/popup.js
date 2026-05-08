@@ -89,7 +89,10 @@ function fmt(ms) {
 }
 
 function nowHMS()  { return new Date().toTimeString().slice(0, 8); }
-function nowDate() { return new Date().toISOString().slice(0, 10); }
+function nowDate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 
 function startTick() {
   stopTick();
