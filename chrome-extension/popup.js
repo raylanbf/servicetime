@@ -255,7 +255,7 @@ async function doUpload() {
   try {
     const res = await fetch(S.webhook_url, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body:    JSON.stringify({ usuario: S.usuario, registros: pendentes }),
     });
     const json = await res.json();
