@@ -14,12 +14,15 @@ const APPS_SCRIPT =
     var dados = JSON.parse(e.postData.contents);
     var planilha = SpreadsheetApp.getActiveSpreadsheet();
     var nomeAba  = dados.usuario || "Sem nome";
+    var cabecalho = ["Usuário","Data","Tipo de Serviço","Início","Fim","Duração","Pausas","URLs","Comentário"];
 
     var aba = planilha.getSheetByName(nomeAba);
     if (!aba) {
       aba = planilha.insertSheet(nomeAba);
-      aba.appendRow(["Usuário","Data","Tipo de Serviço","Início","Fim","Duração","Pausas","URL","Comentário"]);
+      aba.appendRow(cabecalho);
       aba.getRange(1,1,1,9).setFontWeight("bold");
+    } else if (aba.getLastColumn() < 9) {
+      aba.getRange(1,1,1,9).setValues([cabecalho]).setFontWeight("bold");
     }
 
     var registros = dados.registros || [];
@@ -29,6 +32,7 @@ const APPS_SCRIPT =
       var pausas = (r.pausas || []).map(function(p) {
         return (p.pausa || "") + " → " + (p.retorno || "-");
       }).join("; ");
+      var allLinks = [r.url || ""].concat(r.links || []).filter(Boolean).join("\\n");
       linhas.push([
         r.usuario      || nomeAba,
         r.data         || "",
@@ -37,7 +41,7 @@ const APPS_SCRIPT =
         r.fim          || "",
         r.tempo_total  || "",
         pausas,
-        r.url          || "",
+        allLinks,
         r.comentario   || ""
       ]);
     }
@@ -145,11 +149,46 @@ function syncMain() {
 
   const urlBox = $('url-box');
   if (S.running && S.currentRecord && S.currentRecord.url) {
-    urlBox.style.display = 'flex';
-    $('url-display').textContent = S.currentRecord.url;
+    urlBox.style.display = 'block';
+    const list = $('links-list');
+    list.innerHTML = '';
+
+    const startDiv = document.createElement('div');
+    startDiv.className = 'link-item';
+    startDiv.innerHTML = `<span class="link-text" title="${S.currentRecord.url}">${S.currentRecord.url}</span>`;
+    list.appendChild(startDiv);
+
+    (S.currentRecord.links || []).forEach((link, i) => {
+      const div = document.createElement('div');
+      div.className = 'link-item';
+      div.innerHTML = `<span class="link-text" title="${link}">${link}</span><button class="btn-rm-link" data-i="${i}">✕</button>`;
+      list.appendChild(div);
+    });
+
+    list.onclick = async e => {
+      const btn = e.target.closest('.btn-rm-link');
+      if (!btn) return;
+      const i = +btn.dataset.i;
+      const links = [...(S.currentRecord.links || [])];
+      links.splice(i, 1);
+      await persist({ currentRecord: { ...S.currentRecord, links } });
+      syncMain();
+    };
   } else {
     urlBox.style.display = 'none';
   }
+}
+
+// ── Links adicionais ──────────────────────────────────────────────
+async function doAddLink() {
+  if (!S.running || !S.currentRecord) return;
+  const tabs = await chrome.tabs.query({active: true, currentWindow: true});
+  const url = tabs[0]?.url;
+  if (!url) return;
+  const links = S.currentRecord.links || [];
+  if (url === S.currentRecord.url || links.includes(url)) return;
+  await persist({ currentRecord: { ...S.currentRecord, links: [...links, url] } });
+  syncMain();
 }
 
 // ── Modal de comentário ───────────────────────────────────────────
@@ -194,6 +233,7 @@ async function doStart() {
     tempo_total_segundos: 0,
     enviado:              false,
     url:                  url,
+    links:                [],
     comentario:           null,
   };
   await persist({ running: true, paused: false, startTs: Date.now(), accMs: 0, currentRecord: record });
@@ -354,6 +394,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('btn-start').addEventListener('click', doStart);
   $('btn-pause').addEventListener('click', doPause);
   $('btn-stop').addEventListener('click',  doStop);
+  $('btn-add-link').addEventListener('click', doAddLink);
   $('btn-sheets').addEventListener('click', doUpload);
   $('btn-sheets-help').addEventListener('click', () => show('help'));
   $('btn-edit-tipos').addEventListener('click', () => { buildEditTipos(); show('edit-tipos'); });
